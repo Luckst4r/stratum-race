@@ -1614,7 +1614,16 @@ async def run(args: argparse.Namespace) -> None:
         print(f"Wrote CSV: {race_csv}")
 
 
+MIN_PYTHON = (3, 9)
+
+
 def main() -> None:
+    if sys.version_info < MIN_PYTHON:
+        sys.exit(
+            f"str_race.py requires Python {MIN_PYTHON[0]}.{MIN_PYTHON[1]}+. "
+            f"You are running Python {sys.version.split()[0]}."
+        )
+
     parser = argparse.ArgumentParser(description="Asyncio Stratum prevhash race timer by @proofofmike.")
     parser.add_argument(
         "--user",
