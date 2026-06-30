@@ -80,15 +80,15 @@ class ReconnectSession(Exception):
 
 
 def wall_clock() -> str:
-    return time.strftime("%H:%M:%S")
+    return datetime.now().strftime("%H:%M:%S.%f")[:-3]
 
 
 def local_iso() -> str:
-    return datetime.now().astimezone().isoformat(timespec="seconds")
+    return datetime.now().astimezone().isoformat(timespec="milliseconds")
 
 
 def utc_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
 def loop_time() -> float:
@@ -305,6 +305,8 @@ class Race:
     first_pool: str
     first_ts: float
     first_wall: str
+    first_epoch: float
+    first_utc: str
     eligible_at_start: Set[str]
     arrivals: Dict[str, float] = field(default_factory=dict)
     arrival_wall: Dict[str, str] = field(default_factory=dict)
@@ -518,6 +520,8 @@ class RaceTracker:
             first_pool=pool_name,
             first_ts=recv_ts,
             first_wall=local_iso(),
+            first_epoch=time.time(),
+            first_utc=utc_iso(),
             eligible_at_start=eligible_at_start,
         )
         race.arrivals[pool_name] = recv_ts
@@ -720,27 +724,43 @@ def _fetch_json_blocking(url: str, timeout: float) -> Dict[str, Any]:
     return data
 
 
+BLOCK_LOOKUP_MAX_RETRIES = 2
+BLOCK_LOOKUP_BACKOFF_BASE = 2.0  # seconds; doubles each retry
+
+
 async def lookup_block_metadata(block_hash: str) -> Dict[str, Any]:
-    """Lookup block height/miner tag after timing has stopped."""
+    """Lookup block height/miner tag after timing has stopped.
+    Retries on transient HTTP errors (429, 503) with exponential backoff."""
     endpoints = [
         f"{MEMPOOL_API_BASE}/v1/block/{block_hash}",
         f"{MEMPOOL_API_BASE}/block/{block_hash}",
     ]
 
     last_error: Optional[str] = None
+    loop = asyncio.get_running_loop()
 
     for url in endpoints:
-        try:
-            data = await asyncio.to_thread(_fetch_json_blocking, url, BLOCK_MINER_LOOKUP_TIMEOUT)
-        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError, json.JSONDecodeError) as e:
-            last_error = str(e)
-            continue
+        for attempt in range(1 + BLOCK_LOOKUP_MAX_RETRIES):
+            try:
+                data = await loop.run_in_executor(
+                    None, lambda u=url: _fetch_json_blocking(u, BLOCK_MINER_LOOKUP_TIMEOUT)
+                )
+            except urllib.error.HTTPError as e:
+                last_error = str(e)
+                if e.code in (429, 503) and attempt < BLOCK_LOOKUP_MAX_RETRIES:
+                    wait = BLOCK_LOOKUP_BACKOFF_BASE * (2 ** attempt)
+                    await asyncio.sleep(wait)
+                    continue
+                break
+            except (urllib.error.URLError, TimeoutError, ValueError, json.JSONDecodeError) as e:
+                last_error = str(e)
+                break
 
-        return {
-            "height": _extract_block_height(data),
-            "miner": _extract_miner_tag(data) or "Unknown",
-            "source": "mempool.space",
-        }
+            return {
+                "height": _extract_block_height(data),
+                "miner": _extract_miner_tag(data) or "Unknown",
+                "source": "mempool.space",
+            }
 
     return {
         "height": None,
@@ -766,6 +786,8 @@ async def enrich_races_with_block_miners(races: List[Race]) -> None:
         metadata[block_hash] = meta
         height = meta["height"] if meta["height"] is not None else "N/A"
         print(f"  {i:>3}/{len(unique_hashes)} {short_hash(block_hash)} height={height} mined_by={meta['miner']}", flush=True)
+        if i < len(unique_hashes):
+            await asyncio.sleep(0.5)
 
     for race in confirmed:
         meta = metadata.get(race.prevhash, {})
@@ -1086,6 +1108,8 @@ def race_dict(r: Race) -> Dict[str, Any]:
         "block_miner_source": r.block_miner_source,
         "winner": r.first_pool,
         "first_wall": r.first_wall,
+        "first_epoch": r.first_epoch,
+        "first_utc": r.first_utc,
         "confirmed": r.confirmed,
         "closed": r.closed,
         "eligible_at_start": sorted(r.eligible_at_start),
@@ -1173,7 +1197,8 @@ def write_csv(prefix_or_path: str, pools: Dict[str, PoolState], races: List[Race
 
     with race_path.open("w", newline="") as f:
         fieldnames = [
-            "index", "prevhash", "block_height", "block_miner", "confirmed", "winner", "first_wall",
+            "index", "prevhash", "block_height", "block_miner", "confirmed", "winner",
+            "first_wall", "first_epoch", "first_utc",
             "pool", "offset_ms", "eligible_at_start", "missed_pools",
         ]
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -1189,6 +1214,8 @@ def write_csv(prefix_or_path: str, pools: Dict[str, PoolState], races: List[Race
                     "confirmed": r.confirmed,
                     "winner": r.first_pool,
                     "first_wall": r.first_wall,
+                    "first_epoch": r.first_epoch,
+                    "first_utc": r.first_utc,
                     "pool": pool_name,
                     "offset_ms": offset,
                     "eligible_at_start": ";".join(sorted(r.eligible_at_start)),
@@ -1337,6 +1364,30 @@ def print_final_report(
         print("  blockhash  = stratum prevhash transformed to canonical explorer hash; height/miner are post-run lookups")
         print("  reconnects = established session ended and reconnected: read timeout, remote close, or other disconnect")
         print("  noise      = clean=false same-prevhash notify/template refresh")
+
+    # One-line headline result at the very end for quick scanning.
+    if confirmed:
+        ranked = sorted(
+            [(statistics.median(p.all_arrival_offsets), p) for p in pools.values() if p.all_arrival_offsets],
+            key=lambda x: x[0],
+        )
+        if len(ranked) >= 2:
+            _, first = ranked[0]
+            _, second = ranked[1]
+            first_med = statistics.median(first.all_arrival_offsets)
+            second_med = statistics.median(second.all_arrival_offsets)
+            print(
+                f"\nRESULT: {first.name} 1st (median {first_med:.1f}ms), "
+                f"{second.name} 2nd (median {second_med:.1f}ms) over {len(confirmed)} races.",
+                flush=True,
+            )
+        elif len(ranked) == 1:
+            _, first = ranked[0]
+            first_med = statistics.median(first.all_arrival_offsets)
+            print(
+                f"\nRESULT: {first.name} 1st (median {first_med:.1f}ms) over {len(confirmed)} races.",
+                flush=True,
+            )
 
 
 def send_json(writer: asyncio.StreamWriter, obj: object) -> None:
@@ -1506,15 +1557,35 @@ async def pool_worker(
             await asyncio.sleep(RECONNECT_DELAY)
 
 
+HEARTBEAT_INTERVAL = 300.0  # 5 minutes
+
+
 async def housekeeping(
     tracker: RaceTracker,
     pools: Dict[str, PoolState],
     stop_event: asyncio.Event,
 ) -> None:
+    last_heartbeat = loop_time()
+    start_time = last_heartbeat
+
     while not stop_event.is_set():
         await asyncio.sleep(1.0)
         tracker.check_consensus(pools)
         tracker.cleanup_races(pools)
+
+        now = loop_time()
+        if tracker.tracking_enabled and (now - last_heartbeat) >= HEARTBEAT_INTERVAL:
+            last_heartbeat = now
+            uptime_s = int(now - start_time)
+            h, rem = divmod(uptime_s, 3600)
+            m, _ = divmod(rem, 60)
+            confirmed = sum(1 for r in tracker.all_races if r.confirmed)
+            connected = sum(1 for p in pools.values() if p.connected)
+            print(
+                f"[{wall_clock()}] --- heartbeat: {confirmed} races confirmed, "
+                f"{connected}/{len(pools)} pools connected, uptime {h}h{m:02d}m ---",
+                flush=True,
+            )
 
 
 def load_pool_configs(path: Optional[str]) -> List[PoolConfig]:
@@ -1614,16 +1685,7 @@ async def run(args: argparse.Namespace) -> None:
         print(f"Wrote CSV: {race_csv}")
 
 
-MIN_PYTHON = (3, 9)
-
-
 def main() -> None:
-    if sys.version_info < MIN_PYTHON:
-        sys.exit(
-            f"str_race.py requires Python {MIN_PYTHON[0]}.{MIN_PYTHON[1]}+. "
-            f"You are running Python {sys.version.split()[0]}."
-        )
-
     parser = argparse.ArgumentParser(description="Asyncio Stratum prevhash race timer by @proofofmike.")
     parser.add_argument(
         "--user",
