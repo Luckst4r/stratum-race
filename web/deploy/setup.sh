@@ -62,9 +62,14 @@ if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: a
 fi
 
 echo "==> configuring nginx for $DOMAIN"
-sed "s/stratumrace\.com/${DOMAIN}/g" \
-  "$REPO_DIR/web/deploy/nginx-stratumrace.conf" > /etc/nginx/sites-available/stratumrace.conf
-ln -sf /etc/nginx/sites-available/stratumrace.conf /etc/nginx/sites-enabled/stratumrace.conf
+# Write the vhost only on first install: certbot rewrites this file to add
+# TLS, and regenerating it on redeploy would clobber the 443 server block.
+NGINX_CONF=/etc/nginx/sites-available/stratumrace.conf
+if [ ! -f "$NGINX_CONF" ]; then
+  sed "s/stratumrace\.com/${DOMAIN}/g" \
+    "$REPO_DIR/web/deploy/nginx-stratumrace.conf" > "$NGINX_CONF"
+fi
+ln -sf "$NGINX_CONF" /etc/nginx/sites-enabled/stratumrace.conf
 rm -f /etc/nginx/sites-enabled/default
 nginx -t
 systemctl reload nginx
@@ -72,6 +77,11 @@ systemctl reload nginx
 echo "==> requesting TLS certificate (best effort)"
 if certbot certificates 2>/dev/null | grep -q "Domains:.*${DOMAIN}"; then
   echo "certificate already present"
+  if ! grep -q "listen 443" "$NGINX_CONF"; then
+    echo "re-attaching existing certificate to nginx config"
+    certbot install --nginx --cert-name "$DOMAIN" --non-interactive --redirect \
+      || echo "WARNING: certbot install failed — site may be HTTP-only"
+  fi
 else
   certbot --nginx --non-interactive --agree-tos --register-unsafely-without-email \
     -d "$DOMAIN" -d "www.${DOMAIN}" --redirect \
