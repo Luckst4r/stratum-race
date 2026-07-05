@@ -4,6 +4,8 @@
 
   var DATA_URL = "data/leaderboard.json";
   var REFRESH_MS = 60000;
+  var currentFilter = "all";
+  var lastData = null;
 
   function $(id) { return document.getElementById(id); }
   function el(tag, cls, text) {
@@ -27,18 +29,6 @@
     unreachable: { dot: "dot-down", label: "unreachable" }
   };
 
-  function statusCell(p) {
-    var s = STATUS[p.status] || STATUS.collecting;
-    var span = el("span", "status");
-    span.appendChild(el("span", "dot " + s.dot));
-    var label = s.label;
-    span.appendChild(el("span", null, label));
-    if (p.last_error && p.status === "unreachable") {
-      span.title = p.last_error;
-    }
-    return span;
-  }
-
   function poolCell(p) {
     var d = el("div", "pool-cell");
     d.appendChild(el("span", "pool-name", prettyName(p.name)));
@@ -54,37 +44,50 @@
     ranked.forEach(function (p) {
       if (p.median_ms !== null && p.median_ms > maxMedian) maxMedian = p.median_ms;
     });
+    var shown = ranked.filter(function (p) {
+      return currentFilter === "all" || (p.tier || "small") === currentFilter;
+    });
 
-    ranked.forEach(function (p) {
+    shown.forEach(function (p) {
       var tr = el("tr", p.rank === 1 ? "rank-1" : null);
 
-      var rankTd = el("td", "num rank", String(p.rank));
-      tr.appendChild(rankTd);
+      tr.appendChild(el("td", "num rank", String(p.rank)));
       var poolTd = el("td"); poolTd.appendChild(poolCell(p)); tr.appendChild(poolTd);
-      tr.appendChild(el("td", "num median-strong", fmt(p.median_ms)));
 
-      var barTd = el("td", "bar-col");
-      var track = el("div", "bar-track");
+      // Median value with a log-scaled bar underneath: keeps 150 ms and 4 s
+      // pools both visible in one column.
+      var medTd = el("td", "num median-cell");
+      medTd.appendChild(el("div", "median-strong", fmt(p.median_ms)));
+      var track = el("div", "median-bar");
       var bar = el("div", "bar");
-      var w = maxMedian > 0 ? Math.max(1.5, 100 * (p.median_ms / maxMedian)) : 1.5;
+      var w = maxMedian > 0
+        ? Math.max(2, 100 * Math.log10(1 + (p.median_ms || 0)) / Math.log10(1 + maxMedian))
+        : 2;
       bar.style.width = w + "%";
       track.appendChild(bar);
-      track.title = "median " + fmt(p.median_ms) + " ms behind the fastest pool";
-      barTd.appendChild(track);
-      tr.appendChild(barTd);
+      medTd.appendChild(track);
+      medTd.title = "median " + fmt(p.median_ms) + " ms behind the fastest full template (bar is log-scaled)";
+      tr.appendChild(medTd);
 
       tr.appendChild(el("td", "num", fmt(p.avg_ms)));
       tr.appendChild(el("td", "num", fmt(p.p95_ms)));
       tr.appendChild(el("td", "num", fmt(p.best_ms)));
-      tr.appendChild(el("td", "num", String(p.wins)));
-      tr.appendChild(el("td", "num", p.win_pct === null ? "—" : fmt(p.win_pct, 0) + "%"));
+      var winsTxt = String(p.wins) + (p.win_pct === null ? "" : " · " + fmt(p.win_pct, 0) + "%");
+      tr.appendChild(el("td", "num", winsTxt));
       var ef = el("td", "num", !p.empty_first_pct ? "—" : fmt(p.empty_first_pct, 0) + "%");
       if (p.empty_first_pct) ef.title = "First notify was an empty (coinbase-only) template in " + fmt(p.empty_first_pct, 0) + "% of its races";
       tr.appendChild(ef);
       tr.appendChild(el("td", "num", p.seen + "/" + data.races));
-      var st = el("td"); st.appendChild(statusCell(p)); tr.appendChild(st);
       tbody.appendChild(tr);
     });
+
+    if (shown.length === 0 && ranked.length > 0) {
+      var emptyTr = el("tr");
+      var td = el("td", "muted-cell", "No " + currentFilter + " pools ranked yet.");
+      td.colSpan = 9;
+      emptyTr.appendChild(td);
+      tbody.appendChild(emptyTr);
+    }
 
     $("leaderboard-panel").classList.toggle("hidden", ranked.length === 0);
   }
@@ -155,10 +158,13 @@
     if (data.vantage) {
       $("vantage").textContent = data.vantage;
       $("vantage-line").classList.remove("hidden");
+      $("vantage-inline").textContent = data.vantage;
+      $("vantage-note").classList.remove("hidden");
     }
   }
 
   function render(data) {
+    lastData = data;
     var hasRaces = (data.races || 0) > 0;
     $("empty-state").classList.toggle("hidden", hasRaces);
     renderTiles(data);
@@ -166,6 +172,16 @@
     renderRaces(data);
     renderWatchlist(data);
   }
+
+  Array.prototype.forEach.call(document.querySelectorAll(".filter-btn"), function (btn) {
+    btn.addEventListener("click", function () {
+      currentFilter = btn.getAttribute("data-filter");
+      Array.prototype.forEach.call(document.querySelectorAll(".filter-btn"), function (b) {
+        b.classList.toggle("active", b === btn);
+      });
+      if (lastData) renderLeaderboard(lastData);
+    });
+  });
 
   function load() {
     fetch(DATA_URL, { cache: "no-store" })

@@ -36,11 +36,29 @@ chown -R stratumrace:stratumrace "$DATA_DIR" /var/lib/stratum-race "$WEB_ROOT/da
 
 echo "==> writing racer environment"
 # Managed values are rewritten on every deploy; VANTAGE is preserved if the
-# operator customized it, else auto-detected once from cloud metadata.
+# operator customized it. Auto-detected values (including the older
+# "cloud server (...)" format) are regenerated with a human-readable city.
 VANTAGE_LINE="$(grep '^VANTAGE=' /etc/stratum-race/racer.env 2>/dev/null || true)"
+case "$VANTAGE_LINE" in
+  ""|"VANTAGE=cloud server ("*) VANTAGE_LINE="" ;;
+esac
 if [ -z "$VANTAGE_LINE" ]; then
   REGION="$(curl -fsm 3 http://169.254.169.254/metadata/v1/region 2>/dev/null || true)"
-  [ -n "$REGION" ] && VANTAGE_LINE="VANTAGE=cloud server (${REGION})"
+  if [ -n "$REGION" ]; then
+    case "$REGION" in
+      sfo*) CITY="San Francisco, US" ;;
+      nyc*) CITY="New York, US" ;;
+      ams*) CITY="Amsterdam, NL" ;;
+      fra*) CITY="Frankfurt, DE" ;;
+      lon*) CITY="London, UK" ;;
+      sgp*) CITY="Singapore" ;;
+      blr*) CITY="Bangalore, IN" ;;
+      tor*) CITY="Toronto, CA" ;;
+      syd*) CITY="Sydney, AU" ;;
+      *)    CITY="cloud region ${REGION}" ;;
+    esac
+    VANTAGE_LINE="VANTAGE=${CITY} (DigitalOcean ${REGION})"
+  fi
 fi
 {
   echo "SESSION_SECS=900"

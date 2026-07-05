@@ -22,6 +22,10 @@
       of <code>mining.notify</code> arrival times across public stratum endpoints.
       Lower is better&nbsp;&mdash; slow notifications mean hashing stale work.
     </p>
+    <p class="sub vantage-note hidden" id="vantage-note">
+      Measured from <strong id="vantage-inline"></strong> &mdash; results are vantage-specific.
+      Pools with servers nearby have a structural edge; a pool that loses here may win from Europe or Asia.
+    </p>
   </header>
 
   <section class="tiles" id="tiles" aria-label="Summary">
@@ -41,23 +45,25 @@
     <div class="panel-head">
       <h2>Leaderboard</h2>
       <span class="panel-note">ranked by median arrival of the first <em>full</em> (non-empty) template · min <span id="min-races">3</span> races</span>
+      <div class="filters" role="group" aria-label="Pool filter">
+        <button type="button" class="filter-btn active" data-filter="all">All</button>
+        <button type="button" class="filter-btn" data-filter="big" title="Pools that found at least one block in the last 24 hours (per mempool.space)">Big pools</button>
+        <button type="button" class="filter-btn" data-filter="small" title="Pools with no block found in the last 24 hours">Small pools</button>
+      </div>
     </div>
     <div class="table-scroll">
       <table id="leaderboard">
         <thead>
           <tr>
-            <th class="num">#</th>
-            <th>Pool</th>
-            <th class="num">Median</th>
-            <th class="bar-col">Offset (ms)</th>
-            <th class="num">Avg</th>
-            <th class="num">P95</th>
-            <th class="num">Best</th>
-            <th class="num">Wins</th>
-            <th class="num">Win %</th>
-            <th class="num" title="Share of races where this pool's first notify was an empty (coinbase-only) template">Empty 1st</th>
-            <th class="num">Races</th>
-            <th>Status</th>
+            <th class="num" title="Rank by median arrival of the first full template — lower median is faster">#</th>
+            <th title="Pool name and the stratum endpoint being raced">Pool</th>
+            <th class="num" title="Median time behind the fastest pool's full template, in milliseconds, across this pool's races. The bar is log-scaled so small and large offsets are both visible">Median (ms)</th>
+            <th class="num" title="Average (mean) offset in milliseconds across this pool's races">Avg</th>
+            <th class="num" title="95th percentile offset — this pool is faster than this in 95% of races">P95</th>
+            <th class="num" title="This pool's single best (lowest) offset — 0.0 means it delivered the first full template at least once">Best</th>
+            <th class="num" title="Races where this pool delivered the first full (non-empty) template, and that as a share of its races">Wins</th>
+            <th class="num" title="Share of races where this pool's first notify was an empty (coinbase-only) template — hashing on it earns no fees until the full template arrives">Empty 1st</th>
+            <th class="num" title="Races this pool delivered the new block in / total blocks raced">Races</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -74,15 +80,15 @@
       <table id="races">
         <thead>
           <tr>
-            <th class="num">Height</th>
-            <th>Time (UTC)</th>
-            <th>Found by</th>
-            <th title="First pool to deliver a full (non-empty) template">First full template</th>
-            <th title="Pool that delivered an earlier empty-template notify, if any">Empty jump-start</th>
-            <th>Runner-up</th>
-            <th class="num">Gap (ms)</th>
-            <th class="num">Spread (ms)</th>
-            <th class="num">Pools</th>
+            <th class="num" title="Bitcoin block height (from mempool.space)">Height</th>
+            <th title="When the first notification for this block arrived">Time (UTC)</th>
+            <th title="Mining pool credited with finding the block (coinbase tag via mempool.space)">Found by</th>
+            <th title="First pool to deliver a full (non-empty) template — the race winner">First full template</th>
+            <th title="Pool that delivered an earlier empty-template (coinbase-only) notify, if any">Empty jump-start</th>
+            <th title="Second pool to deliver a full template">Runner-up</th>
+            <th class="num" title="Milliseconds between the winner and the runner-up">Gap (ms)</th>
+            <th class="num" title="Milliseconds between the winner and the slowest pool that delivered this block">Spread (ms)</th>
+            <th class="num" title="Number of pools that delivered any notification for this block">Pools</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -119,7 +125,11 @@
       that the pool globally won block propagation. Results depend on geography, routing, DNS, and pool backend behavior.
       Sub-millisecond differences in a single race are noise; medians over many races are the signal.
     </p>
-    <p id="vantage-line" class="hidden">Vantage point: <span id="vantage"></span></p>
+    <p id="vantage-line" class="hidden">
+      Vantage point: <span id="vantage"></span>. Pools with infrastructure near this location have a structural
+      latency advantage, so treat rankings as "fastest <em>from here</em>" — a pool that loses from this vantage
+      may win from Europe or Asia. Run your own racer from another region to compare.
+    </p>
   </section>
 
   <footer>
