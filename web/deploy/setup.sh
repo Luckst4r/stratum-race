@@ -55,6 +55,12 @@ systemctl daemon-reload
 systemctl enable stratum-racer.service
 systemctl restart stratum-racer.service
 
+if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
+  echo "==> opening firewall ports 80/443"
+  ufw allow 80/tcp >/dev/null || true
+  ufw allow 443/tcp >/dev/null || true
+fi
+
 echo "==> configuring nginx for $DOMAIN"
 sed "s/stratumrace\.com/${DOMAIN}/g" \
   "$REPO_DIR/web/deploy/nginx-stratumrace.conf" > /etc/nginx/sites-available/stratumrace.conf
