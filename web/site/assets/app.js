@@ -78,6 +78,9 @@
       tr.appendChild(el("td", "num", fmt(p.best_ms)));
       tr.appendChild(el("td", "num", String(p.wins)));
       tr.appendChild(el("td", "num", p.win_pct === null ? "—" : fmt(p.win_pct, 0) + "%"));
+      var ef = el("td", "num", !p.empty_first_pct ? "—" : fmt(p.empty_first_pct, 0) + "%");
+      if (p.empty_first_pct) ef.title = "First notify was an empty (coinbase-only) template in " + fmt(p.empty_first_pct, 0) + "% of its races";
+      tr.appendChild(ef);
       tr.appendChild(el("td", "num", p.seen + "/" + data.races));
       var st = el("td"); st.appendChild(statusCell(p)); tr.appendChild(st);
       tbody.appendChild(tr);
@@ -97,6 +100,9 @@
       var winTd = el("td");
       winTd.appendChild(el("span", "winner-chip", prettyName(r.winner)));
       tr.appendChild(winTd);
+      var js = el("td", r.empty_jumpstart ? "muted-cell" : null, r.empty_jumpstart ? prettyName(r.empty_jumpstart) : "—");
+      if (r.empty_jumpstart) js.title = "Sent an empty-template notify before any pool delivered a full template";
+      tr.appendChild(js);
       tr.appendChild(el("td", null, r.second ? prettyName(r.second) : "—"));
       tr.appendChild(el("td", "num", fmt(r.second_delay_ms)));
       tr.appendChild(el("td", "num", fmt(r.spread_ms)));

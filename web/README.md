@@ -29,6 +29,14 @@ observation window (default: last 14 days of sessions). Pools need at least
 3 observed races to be ranked; the rest are shown as *collecting* or
 *unreachable*.
 
+**Empty templates:** some pools broadcast a coinbase-only (empty) template
+the moment a block is found and only later send the full template. Ranking on
+"first notify" would reward skipping transaction selection entirely, so the
+leaderboard times each pool to its **first non-empty template** instead. No
+pool is excluded — the *Empty 1st* column shows how often a pool led with an
+empty template, and each block's earlier empty notify appears as
+*Empty jump-start* in the recent-blocks table.
+
 Wins are what **this vantage point** observed first — not global proof of
 propagation victory. See the main README for methodology caveats.
 

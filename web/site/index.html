@@ -40,7 +40,7 @@
   <section class="panel" id="leaderboard-panel">
     <div class="panel-head">
       <h2>Leaderboard</h2>
-      <span class="panel-note">ranked by median arrival offset vs. fastest pool per block · min <span id="min-races">3</span> races</span>
+      <span class="panel-note">ranked by median arrival of the first <em>full</em> (non-empty) template · min <span id="min-races">3</span> races</span>
     </div>
     <div class="table-scroll">
       <table id="leaderboard">
@@ -55,6 +55,7 @@
             <th class="num">Best</th>
             <th class="num">Wins</th>
             <th class="num">Win %</th>
+            <th class="num" title="Share of races where this pool's first notify was an empty (coinbase-only) template">Empty 1st</th>
             <th class="num">Races</th>
             <th>Status</th>
           </tr>
@@ -76,7 +77,8 @@
             <th class="num">Height</th>
             <th>Time (UTC)</th>
             <th>Found by</th>
-            <th>First notify</th>
+            <th title="First pool to deliver a full (non-empty) template">First full template</th>
+            <th title="Pool that delivered an earlier empty-template notify, if any">Empty jump-start</th>
             <th>Runner-up</th>
             <th class="num">Gap (ms)</th>
             <th class="num">Spread (ms)</th>
@@ -103,6 +105,14 @@
       each pool pushes <code>mining.notify</code> with a fresh <code>prevhash</code> and <code>clean_jobs=true</code>.
       The first pool to deliver it wins that race; every other pool is timed as an offset (in milliseconds) behind the winner.
       Rankings use the <em>median</em> offset across all observed blocks, so a single lucky or unlucky block doesn't move a pool much.
+    </p>
+    <p>
+      <strong>Empty templates:</strong> some pools broadcast an <em>empty</em> template the instant a block is found —
+      a job containing only the coinbase transaction, no transaction selection or validation — and send the full template
+      seconds later. Racing on "first notify" would flatter that strategy, so rankings here use each pool's
+      <strong>first non-empty template</strong>. All pools are still shown; the <em>Empty&nbsp;1st</em> column reports how
+      often a pool led with an empty template, and each block's earlier empty notify (if any) appears as
+      <em>Empty jump-start</em>.
     </p>
     <p>
       A win means <strong>this client observed that pool first from this network vantage point</strong> — it is not proof
