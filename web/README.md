@@ -40,6 +40,12 @@ empty template, and each block's earlier empty notify appears as
 Wins are what **this vantage point** observed first — not global proof of
 propagation victory. See the main README for methodology caveats.
 
+**Vantage point:** all timings are measured from wherever the racer runs (the
+live instance measures from San Francisco), and pools with nearby
+infrastructure have a structural advantage. The site states its vantage in the
+header and methodology. For a fuller picture, run racers from several regions
+and compare.
+
 ## Self-hosting
 
 On a fresh Debian/Ubuntu server with your domain's DNS already pointed at it:

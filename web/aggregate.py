@@ -19,11 +19,61 @@ import json
 import math
 import statistics
 import sys
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 MIN_RACES_FOR_RANK = 3
+
+# Map our stratum pool names to mempool.space pool slugs so pools can be
+# classified by whether they actually found a block recently. ckpool solo
+# regions all mine under the "Solo CK" tag.
+MEMPOOL_SLUGS = {
+    "antpool": "antpool",
+    "f2pool": "f2pool",
+    "viabtc": "viabtc",
+    "spiderpool": "spiderpool",
+    "binance_pool": "binancepool",
+    "secpool": "secpool",
+    "luxor": "luxor",
+    "ocean": "ocean",
+    "braiins_pool": "braiinspool",
+    "nicehash": "nicehash",
+    "emcd": "emcdpool",
+    "kanopool": "kanopool",
+    "ckpool": "solock",
+    "ckpool_eu": "solock",
+    "ckpool_au": "solock",
+    "ckpool_sg": "solock",
+    "public_pool": "publicpool",
+    "public_pool_21496": "publicpool",
+    "braiins_solo": "braiinssolo",
+    "atlaspool": "atlaspool",
+    "parasite": "parasite",
+}
+
+# Used when the mempool.space lookup fails: pools with a meaningful share of
+# network hashrate that reliably find blocks every day.
+FALLBACK_BIG = {
+    "antpool", "f2pool", "viabtc", "spiderpool", "binance_pool",
+    "secpool", "luxor", "ocean", "braiins_pool",
+}
+
+
+def blocks_last_24h() -> Optional[Dict[str, int]]:
+    """slug -> blocks found in the last 24h, or None if the lookup failed."""
+    try:
+        req = urllib.request.Request(
+            "https://mempool.space/api/v1/mining/pools/24h",
+            headers={"User-Agent": "stratum-race-web/1.0"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+        return {p["slug"]: p.get("blockCount", 0) for p in data.get("pools", [])}
+    except Exception as exc:  # noqa: BLE001 - best effort, fall back to static list
+        print(f"mempool 24h lookup failed: {exc}", file=sys.stderr)
+        return None
 
 
 def load_sessions(sessions_dir: Path) -> List[Dict[str, Any]]:
@@ -159,9 +209,19 @@ def build_pool_rows(
         if winner:
             entry(winner)["wins"] += 1
 
+    # Tier: "big" = the pool (or its mempool.space counterpart) found at least
+    # one block in the last 24 hours; everything else is "small".
+    found_24h = blocks_last_24h()
     rows = []
     for e in pools.values():
         offsets = e.pop("offsets")
+        slug = MEMPOOL_SLUGS.get(e["name"])
+        if found_24h is not None:
+            blocks_24h = found_24h.get(slug, 0) if slug else 0
+            tier = "big" if blocks_24h > 0 else "small"
+        else:
+            blocks_24h = None
+            tier = "big" if e["name"] in FALLBACK_BIG else "small"
         st = stats_for(offsets)
         seen, eligible = e["seen"], e["eligible"]
         if len(offsets) >= MIN_RACES_FOR_RANK:
@@ -183,6 +243,8 @@ def build_pool_rows(
                 "win_pct": round(100.0 * e["wins"] / seen, 1) if seen else None,
                 "seen_pct": round(100.0 * seen / eligible, 1) if eligible else None,
                 "empty_first_pct": round(100.0 * e["empty_first"] / seen, 1) if seen else None,
+                "tier": tier,
+                "blocks_24h": blocks_24h,
                 "status": status,
             }
         )
