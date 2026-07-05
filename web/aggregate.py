@@ -89,6 +89,7 @@ def build_pool_rows(
                 "seen": 0,
                 "eligible": 0,
                 "missed": 0,
+                "empty_first": 0,
                 "offsets": [],
                 "reconnects": 0,
                 "read_timeouts": 0,
@@ -130,17 +131,27 @@ def build_pool_rows(
                 e["last_error"] = str(err)[:160]
             e["last_excluded"] = bool(p.get("excluded_at_baseline"))
 
-    # Timing comes from the merged, deduped race list.
+    # Timing comes from the merged, deduped race list. Rankings use each
+    # pool's first NON-EMPTY (full) template: pools that lead with an empty
+    # coinbase-only template get credit only once the real template lands.
+    # Legacy sessions predate the distinction and treat all arrivals as full.
     for race in races:
         arrivals = race.get("arrivals_offset_ms", {}) or {}
-        winner = race.get("winner")
+        nonempty = race.get("nonempty_arrivals_offset_ms")
+        if nonempty is None:
+            nonempty = arrivals
+        empty_first = set(race.get("empty_first_pools") or [])
+        winner = race.get("winner_nonempty") or race.get("winner")
         for name in race.get("eligible_at_start", []) or arrivals.keys():
             entry(name)["eligible"] += 1
-        for name, offset in arrivals.items():
+        for name in arrivals:
             e = entry(name)
             e["seen"] += 1
+            if name in empty_first:
+                e["empty_first"] += 1
+        for name, offset in nonempty.items():
             try:
-                e["offsets"].append(float(offset))
+                entry(name)["offsets"].append(float(offset))
             except (TypeError, ValueError):
                 pass
         for name in race.get("missed_pools", []) or []:
@@ -150,9 +161,10 @@ def build_pool_rows(
 
     rows = []
     for e in pools.values():
-        st = stats_for(e.pop("offsets"))
+        offsets = e.pop("offsets")
+        st = stats_for(offsets)
         seen, eligible = e["seen"], e["eligible"]
-        if seen >= MIN_RACES_FOR_RANK:
+        if len(offsets) >= MIN_RACES_FOR_RANK:
             status = "ranked"
         elif seen > 0:
             status = "collecting"
@@ -170,6 +182,7 @@ def build_pool_rows(
                 "worst_ms": st["worst"],
                 "win_pct": round(100.0 * e["wins"] / seen, 1) if seen else None,
                 "seen_pct": round(100.0 * seen / eligible, 1) if eligible else None,
+                "empty_first_pct": round(100.0 * e["empty_first"] / seen, 1) if seen else None,
                 "status": status,
             }
         )
@@ -193,11 +206,16 @@ def build_pool_rows(
 def recent_races(races: List[Dict[str, Any]], limit: int) -> List[Dict[str, Any]]:
     out = []
     for race in races[-limit:][::-1]:
+        offsets = race.get("nonempty_arrivals_offset_ms")
+        if offsets is None:
+            offsets = race.get("arrivals_offset_ms") or {}
         arrivals = sorted(
-            ((n, float(v)) for n, v in (race.get("arrivals_offset_ms") or {}).items()),
+            ((n, float(v)) for n, v in offsets.items()),
             key=lambda kv: kv[1],
         )
         second = arrivals[1] if len(arrivals) > 1 else None
+        winner = race.get("winner_nonempty") or race.get("winner")
+        first_any = race.get("winner")
         out.append(
             {
                 "height": race.get("block_height"),
@@ -205,11 +223,14 @@ def recent_races(races: List[Dict[str, Any]], limit: int) -> List[Dict[str, Any]
                 "epoch": race.get("first_epoch"),
                 "miner": race.get("block_miner"),
                 "prevhash_short": race.get("prevhash_short"),
-                "winner": race.get("winner"),
+                "winner": winner,
+                # Pool that delivered the very first notify (empty or not),
+                # only when it differs from the full-template winner.
+                "empty_jumpstart": first_any if first_any and first_any != winner else None,
                 "second": second[0] if second else None,
                 "second_delay_ms": round(second[1], 3) if second else None,
                 "spread_ms": round(arrivals[-1][1], 3) if arrivals else None,
-                "pools_seen": len(arrivals),
+                "pools_seen": len(race.get("arrivals_offset_ms") or {}),
             }
         )
     return out
@@ -238,6 +259,7 @@ def main() -> None:
         "first_race_utc": races[0].get("first_utc") if races else None,
         "last_race_utc": races[-1].get("first_utc") if races else None,
         "min_races_for_rank": MIN_RACES_FOR_RANK,
+        "ranking_basis": "first non-empty template",
         "pools": rows,
         "recent_races": recent_races(races, args.recent),
         "methodology_note": (
