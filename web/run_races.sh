@@ -21,6 +21,17 @@ aggregate() {
     --vantage "$VANTAGE" || echo "aggregate failed" >&2
 }
 
+# On stop (deploy/restart), interrupt the racer with SIGINT: str_race.py
+# finalizes on KeyboardInterrupt and still writes its JSON, so an in-flight
+# session's races are kept instead of thrown away.
+shutdown_requested=0
+racer_pid=""
+on_stop() {
+  shutdown_requested=1
+  [ -n "$racer_pid" ] && kill -INT "$racer_pid" 2>/dev/null
+}
+trap on_stop TERM INT
+
 # Publish something immediately so the site renders before the first session ends.
 aggregate
 
@@ -36,8 +47,19 @@ while true; do
       --pools "$POOLS" \
       --duration "$dur" \
       --tag-block-miners \
-      --json-out "$out" \
-    || echo "race session exited nonzero" >&2
+      --json-out "$out" &
+  racer_pid=$!
+  wait "$racer_pid" || echo "race session exited nonzero" >&2
+
+  if [ "$shutdown_requested" -eq 1 ]; then
+    # First wait may have been interrupted by the trap; wait for the racer to
+    # finish writing, publish what it captured, then exit cleanly.
+    wait "$racer_pid" 2>/dev/null || true
+    aggregate
+    echo "stopped gracefully; session data preserved"
+    exit 0
+  fi
+  racer_pid=""
 
   aggregate
 

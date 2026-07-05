@@ -51,15 +51,18 @@ sudo DOMAIN=your-domain.example ./web/deploy/setup.sh
 ```
 
 That installs nginx + certbot, creates a `stratumrace` system user, installs
-the `stratum-racer` systemd service (30-minute sessions, re-aggregating after
+the `stratum-racer` systemd service (15-minute sessions, re-aggregating after
 each), and requests a Let's Encrypt certificate. Re-running `setup.sh`
-redeploys the current checkout.
+redeploys the current checkout. Stops and restarts are graceful: the racer is
+interrupted with SIGINT so the in-flight session still writes its results.
 
-Useful knobs in `/etc/stratum-race/racer.env`:
+Knobs in `/etc/stratum-race/racer.env` (`SESSION_SECS`, `FIRST_SESSION_SECS`,
+and `KEEP_DAYS` are rewritten by `setup.sh` on each deploy; a customized
+`VANTAGE` is preserved):
 
 ```
-SESSION_SECS=1800        # length of each race session
-FIRST_SESSION_SECS=900   # shorter first session so data shows up sooner
+SESSION_SECS=900         # length of each race session
+FIRST_SESSION_SECS=600   # shorter first session so data shows up sooner
 KEEP_DAYS=14             # aggregation window
 VANTAGE=my basement, AS12345   # shown on the site's methodology section
 POOLS=/opt/stratum-race/web/pools/web-pools.json

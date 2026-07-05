@@ -35,14 +35,19 @@ mkdir -p "$WEB_ROOT/data"
 chown -R stratumrace:stratumrace "$DATA_DIR" /var/lib/stratum-race "$WEB_ROOT/data"
 
 echo "==> writing racer environment"
-if [ ! -f /etc/stratum-race/racer.env ]; then
+# Managed values are rewritten on every deploy; VANTAGE is preserved if the
+# operator customized it, else auto-detected once from cloud metadata.
+VANTAGE_LINE="$(grep '^VANTAGE=' /etc/stratum-race/racer.env 2>/dev/null || true)"
+if [ -z "$VANTAGE_LINE" ]; then
   REGION="$(curl -fsm 3 http://169.254.169.254/metadata/v1/region 2>/dev/null || true)"
-  {
-    echo "SESSION_SECS=1800"
-    echo "FIRST_SESSION_SECS=900"
-    [ -n "$REGION" ] && echo "VANTAGE=cloud server (${REGION})"
-  } > /etc/stratum-race/racer.env
+  [ -n "$REGION" ] && VANTAGE_LINE="VANTAGE=cloud server (${REGION})"
 fi
+{
+  echo "SESSION_SECS=900"
+  echo "FIRST_SESSION_SECS=600"
+  echo "KEEP_DAYS=14"
+  [ -n "$VANTAGE_LINE" ] && echo "$VANTAGE_LINE"
+} > /etc/stratum-race/racer.env
 
 echo "==> seeding leaderboard.json"
 sudo -u stratumrace python3 "$REPO_DIR/web/aggregate.py" \
