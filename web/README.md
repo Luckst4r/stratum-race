@@ -13,7 +13,7 @@ the site is static HTML/CSS/JS served by nginx.
 
 | Path | Purpose |
 |------|---------|
-| `pools/web-pools.json` | Pool set raced by the site: the 30 known solo pools plus major pools from [mempool.space](https://mempool.space/graphs/mining/pools) with public stratum endpoints (OCEAN, ViaBTC, F2Pool, AntPool, Binance Pool, Luxor, SpiderPool, SECPOOL, Braiins, Kano, NiceHash, EMCD, BTC.com, Public Pool) |
+| `pools/web-pools.json` | Pool set raced by the site: the 30 known solo pools plus major pools from [mempool.space](https://mempool.space/graphs/mining/pools) with public stratum endpoints (OCEAN, ViaBTC, F2Pool, AntPool, Binance Pool, Luxor, SpiderPool, SECPOOL, Braiins, Kano, NiceHash, EMCD, Public Pool) |
 | `run_races.sh` | Loop: run a 30-minute race session, aggregate, repeat |
 | `aggregate.py` | Merges all session exports into `leaderboard.json` (dedupes races by prevhash, recomputes stats across the full window) |
 | `site/` | Static frontend — dark, minimal leaderboard that polls `data/leaderboard.json` |

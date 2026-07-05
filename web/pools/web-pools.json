@@ -36,10 +36,9 @@
   {"name": "antpool", "host": "ss.antpool.com", "port": 3333},
   {"name": "binance_pool", "host": "bs.poolbinance.com", "port": 3333},
   {"name": "luxor", "host": "btc.global.luxor.tech", "port": 700},
-  {"name": "spiderpool", "host": "btc.spiderpool.com", "port": 3333},
+  {"name": "spiderpool", "host": "btc-us.spiderpool.com", "port": 3333},
   {"name": "secpool", "host": "btc.secpool.com", "port": 3333},
   {"name": "kanopool", "host": "stratum.kano.is", "port": 3333},
   {"name": "nicehash", "host": "sha256.auto.nicehash.com", "port": 9200},
-  {"name": "emcd", "host": "gate.emcd.io", "port": 3333},
-  {"name": "btc_com", "host": "ss.btc.com", "port": 1800}
+  {"name": "emcd", "host": "gate.emcd.io", "port": 3333}
 ]
