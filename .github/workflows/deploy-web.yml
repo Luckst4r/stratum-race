@@ -22,6 +22,10 @@ on:
       ssh_password:
         description: One-time SSH password (masked, not stored)
         required: true
+      reset_data:
+        description: Set to "yes" to wipe all collected race sessions and restart stats from zero
+        required: false
+        default: "no"
 
 permissions:
   contents: read
@@ -53,6 +57,18 @@ jobs:
           SSH_OPTS="-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20"
           sshpass -e ssh $SSH_OPTS "$SSH_USER@$HOST" "mkdir -p /opt/stratum-race"
           sshpass -e rsync -a --delete --exclude '.git' -e "ssh $SSH_OPTS" ./ "$SSH_USER@$HOST:/opt/stratum-race/"
+
+      - name: Reset collected data
+        if: inputs.reset_data == 'yes'
+        env:
+          SSHPASS: ${{ inputs.ssh_password }}
+          HOST: ${{ inputs.host }}
+          SSH_USER: ${{ inputs.ssh_user }}
+        run: |
+          set -euo pipefail
+          SSH_OPTS="-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20"
+          sshpass -e ssh $SSH_OPTS "$SSH_USER@$HOST" \
+            "systemctl stop stratum-racer 2>/dev/null || true; rm -f /var/lib/stratum-race/sessions/session-*.json; echo 'race sessions wiped'"
 
       - name: Run setup on server
         env:
