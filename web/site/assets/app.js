@@ -144,7 +144,9 @@
     $("tile-pools").textContent = String((data.pools || []).length);
     $("tile-ranked").textContent = ranked.length + " ranked";
     var last = (data.recent_races || [])[0];
-    $("tile-last").textContent = last && last.height ? "#" + last.height : "—";
+    $("tile-last").textContent = last
+      ? (last.height ? "#" + last.height : (last.prevhash_short || "seen"))
+      : "—";
     $("tile-updated").textContent = data.generated_utc ? "updated " + data.generated_utc : "";
     $("foot-generated").textContent = data.generated_utc
       ? "last aggregation " + data.generated_utc + " · " + (data.sessions || 0) + " measurement sessions"
