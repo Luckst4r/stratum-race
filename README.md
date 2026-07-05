@@ -128,6 +128,15 @@ JSON and CSV exports contain full precision data for further analysis.
 
 ---
 
+## Web leaderboard
+
+The [`web/`](web/) directory contains a self-hostable leaderboard site that
+runs `str_race.py` continuously and publishes live pool rankings — see it
+running at [stratumrace.com](https://stratumrace.com) and read
+[`web/README.md`](web/README.md) for setup instructions.
+
+---
+
 ## Real-world usage
 
 This tool was used to benchmark block notification speeds across solo mining pools. See the full analysis and results:
