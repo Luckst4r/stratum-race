@@ -34,14 +34,24 @@ rsync -a --delete --exclude 'data' "$REPO_DIR/web/site/" "$WEB_ROOT/"
 mkdir -p "$WEB_ROOT/data"
 chown -R stratumrace:stratumrace "$DATA_DIR" /var/lib/stratum-race "$WEB_ROOT/data"
 
+if [ "${RESET_DATA:-no}" = "yes" ]; then
+  echo "==> RESET_DATA=yes: wiping collected race sessions"
+  systemctl stop stratum-racer 2>/dev/null || true
+  rm -f "$DATA_DIR"/session-*.json
+fi
+
 echo "==> writing racer environment"
-# Managed values are rewritten on every deploy; VANTAGE is preserved if the
-# operator customized it. Auto-detected values (including the older
-# "cloud server (...)" format) are regenerated with a human-readable city.
+# Managed values are rewritten on every deploy. A VANTAGE env var wins,
+# then an operator-customized value in racer.env is preserved; auto-detected
+# values (including the older "cloud server (...)" format) are regenerated
+# with a human-readable city.
 VANTAGE_LINE="$(grep '^VANTAGE=' /etc/stratum-race/racer.env 2>/dev/null || true)"
 case "$VANTAGE_LINE" in
   ""|"VANTAGE=cloud server ("*) VANTAGE_LINE="" ;;
 esac
+if [ -n "${VANTAGE:-}" ]; then
+  VANTAGE_LINE="VANTAGE=${VANTAGE}"
+fi
 if [ -z "$VANTAGE_LINE" ]; then
   REGION="$(curl -fsm 3 http://169.254.169.254/metadata/v1/region 2>/dev/null || true)"
   if [ -n "$REGION" ]; then

@@ -137,8 +137,17 @@ separated from real template delivery.
 
 The [`web/`](web/) directory contains a self-hostable leaderboard site that
 runs `str_race.py` continuously and publishes live pool rankings — see it
-running at [stratumrace.com](https://stratumrace.com) and read
-[`web/README.md`](web/README.md) for setup instructions.
+running at [stratumrace.com](https://stratumrace.com).
+
+Deploying your own takes one command against a fresh Debian/Ubuntu server
+whose DNS you've pointed at it:
+
+```bash
+./web/deploy/deploy.sh --host root@YOUR_SERVER_IP --domain your-domain.example
+```
+
+See [`web/README.md`](web/README.md) for options (`--vantage`, `--reset`),
+day-2 operations, and server migration.
 
 ---
 
