@@ -107,8 +107,17 @@ class PoolSession:
             clean = bool(params[8]) if len(params) > 8 else False
             merkle = params[4] if len(params) > 4 else None
             empty = isinstance(merkle, list) and len(merkle) == 0
+            # A "new block" is a clean-jobs prevhash change after baseline —
+            # the only notifies that are valid race arrivals. The first job at
+            # connect references a minutes-old block and must never be joined.
+            new_block = (
+                clean
+                and self.last_prevhash is not None
+                and prevhash != self.last_prevhash
+            )
             self.writer.write(
-                name, {"prevhash": prevhash, "clean": clean, "empty": empty}
+                name,
+                {"prevhash": prevhash, "clean": clean, "empty": empty, "new_block": new_block},
             )
             if clean and prevhash != self.last_prevhash:
                 if self.last_prevhash is not None:
@@ -161,19 +170,27 @@ class PoolSession:
         log(f"{name}: relaying miner <-> {host}:{port}")
 
         reason = "closed"
+        last_activity = time.monotonic()
 
         async def pump(reader, writer, tap) -> str:
+            nonlocal last_activity
             buf = b""
             while True:
-                timeout = IDLE_TIMEOUT
-                if deadline is not None:
-                    timeout = min(IDLE_TIMEOUT, max(1.0, deadline - time.monotonic()))
-                try:
-                    data = await asyncio.wait_for(reader.read(65536), timeout)
-                except asyncio.TimeoutError:
+                now = time.monotonic()
+                if deadline is not None and now >= deadline:
+                    return "deadline"
+                # Session-level idleness: traffic in EITHER direction keeps the
+                # session alive, so a quiet pool doesn't kill a working miner
+                # (and vice versa). Only a fully silent session is reaped.
+                if now - last_activity > IDLE_TIMEOUT:
                     return "timeout"
+                try:
+                    data = await asyncio.wait_for(reader.read(65536), 15.0)
+                except asyncio.TimeoutError:
+                    continue
                 if not data:
                     return "closed"
+                last_activity = time.monotonic()
                 writer.write(data)
                 await writer.drain()
                 buf += data
@@ -183,8 +200,6 @@ class PoolSession:
                         tap(line)
                 if stop_after_blocks and self.blocks_seen >= stop_after_blocks:
                     return "quota"
-                if deadline is not None and time.monotonic() >= deadline:
-                    return "deadline"
 
         up_task = asyncio.create_task(pump(pool_r, miner_w, self._tap_upstream_line))
         down_task = asyncio.create_task(pump(miner_r, pool_w, self._tap_miner_line))
@@ -235,6 +250,7 @@ class Rotation:
                 pass
         # Carry-over per-pool progress within the current rotation stop.
         self.blocks_done = 0
+        self.dead_sessions = 0  # consecutive sessions with no blocks and no shares
 
     def current(self) -> Dict[str, Any]:
         return self.pools[self.index]
@@ -242,6 +258,7 @@ class Rotation:
     def advance(self) -> None:
         self.index = (self.index + 1) % len(self.pools)
         self.blocks_done = 0
+        self.dead_sessions = 0
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
         self.state_file.write_text(str(self.index) + "\n")
         log(f"rotation: next pool -> {self.current()['name']}")
@@ -293,8 +310,25 @@ async def serve(args: argparse.Namespace) -> None:
                     writer_registry=current_writers,
                 )
                 rotation.blocks_done = session.blocks_seen
-                if reason in ("quota", "deadline", "timeout", "connect_failed"):
+                if reason in ("quota", "deadline"):
                     rotation.advance()
+                elif reason in ("timeout", "connect_failed", "error"):
+                    dead = session.accepted == 0 and session.blocks_seen == rotation.blocks_done
+                    if session.accepted > 0 or session.blocks_seen > 0:
+                        rotation.dead_sessions = 0
+                    elif dead:
+                        rotation.dead_sessions += 1
+                        log(
+                            f"{pool['name']}: dead session "
+                            f"{rotation.dead_sessions}/3 before skipping"
+                        )
+                    if rotation.dead_sessions >= 3:
+                        log(f"{pool['name']}: unresponsive across 3 sessions — moving on")
+                        rotation.advance()
+                else:
+                    # miner-driven disconnect/takeover: same pool continues
+                    if session.accepted > 0 or session.blocks_seen > 0:
+                        rotation.dead_sessions = 0
             else:
                 await session.run(
                     miner_r, miner_w, None, None, writer_registry=current_writers

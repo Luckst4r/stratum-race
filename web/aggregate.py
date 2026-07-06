@@ -134,6 +134,11 @@ def load_active_events(active_dir: Optional[Path]) -> Dict[str, Dict[str, Any]]:
             ph, t = ev.get("prevhash"), ev.get("t")
             if not ph or t is None:
                 continue
+            # Only new-block notifies are race arrivals; the initial job at
+            # connect references a minutes-old block. Events written before
+            # the flag existed pass through and are sanity-bounded at join.
+            if ev.get("new_block") is False:
+                continue
             n = rec["notifies"].setdefault(ph, {"t": t, "t_nonempty": None})
             n["t"] = min(n["t"], t)
             if not ev.get("empty") and (n["t_nonempty"] is None or t < n["t_nonempty"]):
@@ -301,8 +306,13 @@ def build_pool_rows(
                 n = rec["notifies"].get(prevhash)
                 if not n:
                     continue
-                e = entry(pool_name)
                 active_off = (n["t"] - first_epoch) * 1000.0
+                # Sanity bound: a real arrival lands within the confirm window
+                # of the race start; anything further out is a stale-job or
+                # clock artifact, not a measurement.
+                if abs(active_off) > 30_000:
+                    continue
+                e = entry(pool_name)
                 e.setdefault("active_samples", []).append(active_off)
                 idle_off = arrivals.get(pool_name)
                 if idle_off is not None:

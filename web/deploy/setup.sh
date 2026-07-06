@@ -90,6 +90,10 @@ systemctl restart stratum-racer.service
 
 if [ "${WITH_PROXY:-no}" = "yes" ]; then
   echo "==> installing measurement proxy (miners point at port ${PROXY_PORT:-3333})"
+  if [ "${RESET_ROTATION:-no}" = "yes" ]; then
+    echo "==> RESET_ROTATION=yes: rotation restarts at the first pool"
+    rm -f /var/lib/stratum-race/proxy-rotation.state
+  fi
   mkdir -p /var/lib/stratum-race/active
   chown -R stratumrace:stratumrace /var/lib/stratum-race
   if [ ! -f /etc/stratum-race/proxy.env ]; then
