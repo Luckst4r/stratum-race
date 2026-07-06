@@ -90,6 +90,14 @@
           + ")";
       }
       tr.appendChild(wTd);
+      var ip = p.idle_penalty_ms;
+      var ipTd = el("td", "num" + (ip !== null && ip !== undefined && ip <= 0 ? " muted-cell" : ""),
+        (ip === null || ip === undefined) ? "—" : (ip >= 0 ? "+" : "−") + fmt(Math.abs(ip), 0));
+      if (ip !== null && ip !== undefined) {
+        ipTd.title = "Idle connection served " + fmt(Math.abs(ip), 1) + " ms " + (ip >= 0 ? "later" : "earlier")
+          + " than the share-submitting connection (median, " + (p.active_races || 0) + " paired blocks)";
+      }
+      tr.appendChild(ipTd);
       tr.appendChild(el("td", "num", p.seen + "/" + data.races));
       tbody.appendChild(tr);
     });
@@ -97,7 +105,7 @@
     if (shown.length === 0 && ranked.length > 0) {
       var emptyTr = el("tr");
       var td = el("td", "muted-cell", "No " + currentFilter + " pools ranked yet.");
-      td.colSpan = 10;
+      td.colSpan = 11;
       emptyTr.appendChild(td);
       tbody.appendChild(emptyTr);
     }
