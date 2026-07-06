@@ -59,16 +59,17 @@ jobs:
         run: |
           set -euo pipefail
           SSH_OPTS="-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20"
-          # Non-root users take ownership of /opt/stratum-race so rsync can write;
-          # sudo -S reads the password from stdin (never argv), and is a no-op
-          # extra stdin line under NOPASSWD.
+          # Non-root users take ownership of /opt/stratum-race so the copy can
+          # write; sudo -S reads the password from stdin (never argv), and is
+          # a no-op extra stdin line under NOPASSWD.
           if [ "$SSH_USER" = "root" ]; then
             sshpass -e ssh $SSH_OPTS "$SSH_USER@$HOST" "mkdir -p /opt/stratum-race"
           else
             printf '%s\n' "$SSHPASS" | sshpass -e ssh $SSH_OPTS "$SSH_USER@$HOST" \
               "sudo -S -p '' bash -c 'mkdir -p /opt/stratum-race && chown -R $SSH_USER /opt/stratum-race'"
           fi
-          sshpass -e rsync -a --delete --exclude '.git' -e "ssh $SSH_OPTS" ./ "$SSH_USER@$HOST:/opt/stratum-race/"
+          # tar-over-ssh: no rsync needed on a fresh server.
+          tar -czf - --exclude='.git' . | sshpass -e ssh $SSH_OPTS "$SSH_USER@$HOST" "tar -xzf - -C /opt/stratum-race"
 
       - name: Reset collected data
         if: inputs.reset_data == 'yes'
