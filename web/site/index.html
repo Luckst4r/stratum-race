@@ -97,6 +97,27 @@
     </div>
   </section>
 
+  <section class="panel hidden" id="active-panel">
+    <div class="panel-head">
+      <h2>Active-miner tests</h2>
+      <span class="panel-note">timings from a connection submitting real shares via the measurement proxy — the idle penalty is how much later the idle listener was served for the same blocks</span>
+    </div>
+    <div class="table-scroll">
+      <table id="active-tests">
+        <thead>
+          <tr>
+            <th title="Pool under active test">Pool</th>
+            <th class="num" title="Blocks observed on the share-submitting connection">Blocks</th>
+            <th class="num" title="Median arrival of the active connection's notify, relative to the fastest idle listener in each race. Negative = the working connection was served before any idle connection">Active median (ms)</th>
+            <th class="num" title="Median of (idle arrival − active arrival) for the same pool and block. Positive = idle connections are served later, confirming deprioritization">Idle penalty (ms)</th>
+            <th class="num" title="Shares the pool accepted from our miner during the test — proof the connection was treated as a real miner">Shares ✓</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
   <section class="panel" id="watch-panel">
     <div class="panel-head">
       <h2>Not ranked</h2>

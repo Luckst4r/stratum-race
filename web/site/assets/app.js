@@ -128,6 +128,26 @@
     $("races-panel").classList.toggle("hidden", !data.recent_races || data.recent_races.length === 0);
   }
 
+  function renderActiveTests(data) {
+    var tests = data.active_tests || [];
+    var panel = $("active-panel");
+    panel.classList.toggle("hidden", tests.length === 0);
+    if (tests.length === 0) return;
+    var tbody = $("active-tests").tBodies[0];
+    tbody.textContent = "";
+    tests.forEach(function (t) {
+      var tr = el("tr");
+      tr.appendChild(el("td", "pool-name", prettyName(t.pool)));
+      tr.appendChild(el("td", "num", String(t.races)));
+      tr.appendChild(el("td", "num", fmt(t.active_median_ms)));
+      var pen = el("td", "num", t.idle_penalty_ms === null ? "—" : fmt(t.idle_penalty_ms));
+      if (t.idle_penalty_ms !== null && t.idle_penalty_ms > 500) pen.className = "num median-strong";
+      tr.appendChild(pen);
+      tr.appendChild(el("td", "num", String(t.shares_accepted)));
+      tbody.appendChild(tr);
+    });
+  }
+
   function renderWatchlist(data) {
     var list = $("watchlist");
     list.textContent = "";
@@ -186,6 +206,7 @@
     renderTiles(data);
     renderLeaderboard(data);
     renderRaces(data);
+    renderActiveTests(data);
     renderWatchlist(data);
   }
 
