@@ -115,7 +115,10 @@ jobs:
           echo "--- HTTP status ---"
           curl -sS -o /dev/null -w "%{http_code}\n" "http://$HOST/" -H "Host: $DOMAIN"
           echo "--- leaderboard.json head ---"
-          curl -sS "http://$HOST/data/leaderboard.json" -H "Host: $DOMAIN" | head -c 400
+          # curl to a file first: piping into head trips pipefail via SIGPIPE
+          # once the payload outgrows the head window.
+          curl -sS "http://$HOST/data/leaderboard.json" -H "Host: $DOMAIN" -o /tmp/lb.json
+          head -c 400 /tmp/lb.json
           echo
           echo "--- HTTPS (if certbot succeeded) ---"
           curl -sS -o /dev/null -w "%{http_code}\n" "https://$DOMAIN/" --resolve "$DOMAIN:443:$HOST" || true
