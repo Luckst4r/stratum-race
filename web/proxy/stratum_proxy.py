@@ -144,6 +144,7 @@ class PoolSession:
         miner_w: asyncio.StreamWriter,
         stop_after_blocks: Optional[int],
         deadline: Optional[float],
+        writer_registry: Optional[List[asyncio.StreamWriter]] = None,
     ) -> str:
         """Relay until a side disconnects, the block quota is met, or the
         deadline passes. Returns the reason the session ended."""
@@ -155,6 +156,8 @@ class PoolSession:
         except (OSError, asyncio.TimeoutError) as exc:
             log(f"{name}: upstream connect failed ({exc})")
             return "connect_failed"
+        if writer_registry is not None:
+            writer_registry.append(pool_w)
         log(f"{name}: relaying miner <-> {host}:{port}")
 
         reason = "closed"
@@ -162,11 +165,11 @@ class PoolSession:
         async def pump(reader, writer, tap) -> str:
             buf = b""
             while True:
-                timeout = None
+                timeout = IDLE_TIMEOUT
                 if deadline is not None:
-                    timeout = max(1.0, deadline - time.monotonic())
+                    timeout = min(IDLE_TIMEOUT, max(1.0, deadline - time.monotonic()))
                 try:
-                    data = await asyncio.wait_for(reader.read(65536), timeout or IDLE_TIMEOUT)
+                    data = await asyncio.wait_for(reader.read(65536), timeout)
                 except asyncio.TimeoutError:
                     return "timeout"
                 if not data:
@@ -193,7 +196,11 @@ class PoolSession:
         await asyncio.gather(*pending, return_exceptions=True)
         for t in done:
             exc = t.exception()
-            reason = "error" if exc else t.result()
+            if exc:
+                log(f"{name}: relay error: {exc!r}")
+                reason = "error"
+            else:
+                reason = t.result()
 
         for w in (pool_w, miner_w):
             try:
@@ -259,27 +266,39 @@ async def serve(args: argparse.Namespace) -> None:
             f"{args.max_minutes:g} min per pool; starting at {rotation.current()['name']}"
         )
 
-    lock = asyncio.Lock()  # one miner session at a time; extras are refused
+    lock = asyncio.Lock()  # one miner session at a time
+    current_writers: List[asyncio.StreamWriter] = []
 
     async def handle(miner_r: asyncio.StreamReader, miner_w: asyncio.StreamWriter) -> None:
+        # ASIC firmwares commonly reconnect before closing the old socket, or
+        # probe with a second connection. The newest connection wins: kick the
+        # active session and take its slot.
         if lock.locked():
-            log("refusing extra miner connection (one at a time)")
-            miner_w.close()
-            return
+            log("new miner connection — replacing the active session")
+            for w in current_writers:
+                try:
+                    w.close()
+                except Exception:
+                    pass
         async with lock:
+            current_writers.clear()
+            current_writers.append(miner_w)
             pool = parked if parked else rotation.current()
             session = PoolSession(pool, writer)
             if rotation:
                 session.blocks_seen = rotation.blocks_done
                 deadline = time.monotonic() + args.max_minutes * 60.0
                 reason = await session.run(
-                    miner_r, miner_w, args.races_per_pool, deadline
+                    miner_r, miner_w, args.races_per_pool, deadline,
+                    writer_registry=current_writers,
                 )
                 rotation.blocks_done = session.blocks_seen
                 if reason in ("quota", "deadline", "timeout", "connect_failed"):
                     rotation.advance()
             else:
-                await session.run(miner_r, miner_w, None, None)
+                await session.run(
+                    miner_r, miner_w, None, None, writer_registry=current_writers
+                )
 
     server = await asyncio.start_server(handle, args.bind, args.listen)
     log(f"listening on {args.bind}:{args.listen} — point your miner at stratum+tcp://<this-ip>:{args.listen}")
