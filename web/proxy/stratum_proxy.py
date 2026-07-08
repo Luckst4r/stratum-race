@@ -86,8 +86,15 @@ class PoolSession:
         self.rejected = 0
         self.last_prevhash: Optional[str] = None
         self.submit_ids: set = set()
+        # Session-handshake debug: log the first few relayed lines in each
+        # direction so instant pool closes can be diagnosed from the journal.
+        self._dbg_up = 0
+        self._dbg_down = 0
 
     def _tap_upstream_line(self, line: bytes) -> None:
+        if self._dbg_up < 4:
+            self._dbg_up += 1
+            log(f"{self.pool['name']} <-pool  {line[:220]!r}")
         try:
             msg = json.loads(line)
         except (ValueError, UnicodeDecodeError):
@@ -138,6 +145,9 @@ class PoolSession:
             self.writer.write(self.pool["name"], {"share": "accepted" if ok else "rejected"})
 
     def _tap_miner_line(self, line: bytes) -> None:
+        if self._dbg_down < 4:
+            self._dbg_down += 1
+            log(f"{self.pool['name']} miner-> {line[:220]!r}")
         try:
             msg = json.loads(line)
         except (ValueError, UnicodeDecodeError):
