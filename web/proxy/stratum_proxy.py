@@ -154,6 +154,7 @@ class PoolSession:
         stop_after_blocks: Optional[int],
         deadline: Optional[float],
         writer_registry: Optional[List[asyncio.StreamWriter]] = None,
+        initial_data: bytes = b"",
     ) -> str:
         """Relay until a side disconnects, the block quota is met, or the
         deadline passes. Returns the reason the session ended."""
@@ -168,6 +169,15 @@ class PoolSession:
         if writer_registry is not None:
             writer_registry.append(pool_w)
         log(f"{name}: relaying miner <-> {host}:{port}")
+
+        # Bytes the accept path already consumed (the validated first line)
+        # must reach the pool before anything the pumps relay.
+        if initial_data:
+            pool_w.write(initial_data)
+            await pool_w.drain()
+            for line in initial_data.split(b"\n"):
+                if line.strip():
+                    self._tap_miner_line(line)
 
         reason = "closed"
         last_activity = time.monotonic()
@@ -297,6 +307,27 @@ async def serve(args: argparse.Namespace) -> None:
 
     async def handle(miner_r: asyncio.StreamReader, miner_w: asyncio.StreamWriter) -> None:
         nonlocal displaced
+        # An open port on the public internet gets constant scanner probes
+        # (HTTP GETs, TLS hellos). Relaying that garbage makes the pool hang
+        # up, which reads as a dead session and can strike out a healthy
+        # pool. Only a client whose first line is a stratum JSON message gets
+        # a session — or the right to kick the active one.
+        try:
+            first = await asyncio.wait_for(miner_r.readline(), 10.0)
+        except (asyncio.TimeoutError, ValueError, OSError):
+            first = b""
+        try:
+            msg = json.loads(first)
+        except (ValueError, UnicodeDecodeError):
+            msg = None
+        if not (isinstance(msg, dict) and msg.get("method")):
+            peer = miner_w.get_extra_info("peername")
+            log(f"ignoring non-stratum connection from {peer!r}: {first[:80]!r}")
+            try:
+                miner_w.close()
+            except Exception:
+                pass
+            return
         # ASIC firmwares commonly reconnect before closing the old socket, or
         # probe with a second connection. The newest connection wins: kick the
         # active session and take its slot.
@@ -323,7 +354,7 @@ async def serve(args: argparse.Namespace) -> None:
                     rotation.stop_deadline = time.monotonic() + args.max_minutes * 60.0
                 reason = await session.run(
                     miner_r, miner_w, args.races_per_pool, rotation.stop_deadline,
-                    writer_registry=current_writers,
+                    writer_registry=current_writers, initial_data=first,
                 )
                 made_progress = (
                     session.accepted > 0 or session.blocks_seen > rotation.blocks_done
@@ -354,7 +385,8 @@ async def serve(args: argparse.Namespace) -> None:
                         rotation.dead_sessions = 0
             else:
                 await session.run(
-                    miner_r, miner_w, None, None, writer_registry=current_writers
+                    miner_r, miner_w, None, None,
+                    writer_registry=current_writers, initial_data=first
                 )
 
     server = await asyncio.start_server(handle, args.bind, args.listen)
