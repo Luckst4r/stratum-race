@@ -390,7 +390,12 @@ def build_pool_rows(
                 "empty_gap_ms_avg": gap_avg,
                 "active_races": len(active_samples),
                 "active_median_ms": round(statistics.median(active_samples), 3) if active_samples else None,
-                "idle_penalty_ms": round(statistics.median(penalty_samples), 3) if penalty_samples else None,
+                # A pool that rejected every share never treated the active
+                # connection as a real miner, so its pairing proves nothing
+                # about idle deprioritization — publish no penalty for it.
+                "idle_penalty_ms": round(statistics.median(penalty_samples), 3)
+                if penalty_samples and rec.get("accepted", 0) > 0
+                else None,
                 "shares_accepted": rec.get("accepted", 0),
                 "shares_rejected": rec.get("rejected", 0),
                 "tier": tier,

@@ -40,5 +40,6 @@
   {"name": "ca_solohash", "host": "solo-ca.solohash.co.uk", "port": 3333},
   {"name": "uk_solohash", "host": "solo.solohash.co.uk", "port": 3333},
   {"name": "de_solohash", "host": "solo-de.solohash.co.uk", "port": 3333},
-  {"name": "braiins_solo", "host": "solo.stratum.braiins.com", "port": 3333}
+  {"name": "braiins_solo", "host": "solo.stratum.braiins.com", "port": 3333},
+  {"name": "wilsonmining", "host": "us1.wilsonmining.io", "port": 3333}
 ]
