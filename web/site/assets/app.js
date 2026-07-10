@@ -4,7 +4,9 @@
 
   var DATA_URL = "data/leaderboard.json";
   var REFRESH_MS = 60000;
+  var RACES_PER_PAGE = 15;
   var currentFilter = "all";
+  var racePage = 0;
   var lastData = null;
 
   function $(id) { return document.getElementById(id); }
@@ -116,7 +118,15 @@
   function renderRaces(data) {
     var tbody = $("races").tBodies[0];
     tbody.textContent = "";
-    (data.recent_races || []).forEach(function (r) {
+    var races = data.recent_races || [];
+    // Client-side pagination: newest first, so page 1 is the latest blocks.
+    // The page position survives the auto-refresh; it only snaps back when
+    // the list shrinks below the current page.
+    var pages = Math.max(1, Math.ceil(races.length / RACES_PER_PAGE));
+    if (racePage > pages - 1) racePage = pages - 1;
+    if (racePage < 0) racePage = 0;
+    var start = racePage * RACES_PER_PAGE;
+    races.slice(start, start + RACES_PER_PAGE).forEach(function (r) {
       var tr = el("tr");
       tr.appendChild(el("td", "num", r.height ? String(r.height) : "—"));
       tr.appendChild(el("td", null, r.utc ? String(r.utc).replace(" UTC", "") : "—"));
@@ -133,7 +143,12 @@
       tr.appendChild(el("td", "num", String(r.pools_seen)));
       tbody.appendChild(tr);
     });
-    $("races-panel").classList.toggle("hidden", !data.recent_races || data.recent_races.length === 0);
+    $("races-panel").classList.toggle("hidden", races.length === 0);
+    $("races-pager").classList.toggle("hidden", pages <= 1);
+    $("races-page-label").textContent =
+      "page " + (racePage + 1) + " of " + pages + " · " + races.length + " blocks";
+    $("races-prev").disabled = racePage === 0;
+    $("races-next").disabled = racePage >= pages - 1;
   }
 
   function renderActiveTests(data) {
@@ -226,6 +241,13 @@
       });
       if (lastData) renderLeaderboard(lastData);
     });
+  });
+
+  $("races-prev").addEventListener("click", function () {
+    if (racePage > 0) { racePage--; if (lastData) renderRaces(lastData); }
+  });
+  $("races-next").addEventListener("click", function () {
+    racePage++; if (lastData) renderRaces(lastData);
   });
 
   function load() {

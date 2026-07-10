@@ -457,7 +457,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Merge str_race sessions into leaderboard.json")
     ap.add_argument("--sessions", required=True, help="Directory of str_race --json-out files")
     ap.add_argument("--out", required=True, help="Path to write leaderboard.json")
-    ap.add_argument("--recent", type=int, default=40, help="How many recent races to include")
+    ap.add_argument("--recent", type=int, default=200, help="How many recent races to include")
     ap.add_argument("--vantage", default="", help="Optional label describing the measurement vantage point")
     ap.add_argument("--active-dir", default="/var/lib/stratum-race/active",
                     help="Directory of stratum_proxy.py active-*.jsonl event logs")
